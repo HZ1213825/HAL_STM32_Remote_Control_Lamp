@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "delay.h": "c",
+        "steering_engine.h": "c",
+        "main.h": "c"
+    }
+}
