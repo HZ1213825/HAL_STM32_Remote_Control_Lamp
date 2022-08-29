@@ -23,7 +23,6 @@
 /* USER CODE BEGIN Includes */
 #include "IR_NEC.h"
 #include "Steering_Engine.h"
-#include "MY.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -65,13 +64,121 @@ void exit_stop_mode(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-/**
- * @brief ??????
- * @param ?
- * @return ?
- * @author HZ12138
- * @date 2022-08-03 16:47:54
- */
+void OPEN()
+{
+  Steering_Engine_360(0, 30);
+  HAL_Delay(400);
+  Steering_Engine_360(1, 50);
+  HAL_Delay(100);
+  Steering_Engine_Stop();
+  HAL_Delay(2000);
+}
+void CLOSE()
+{
+  Steering_Engine_360(1, 30);
+  HAL_Delay(400);
+  Steering_Engine_360(0, 50);
+  HAL_Delay(180);
+  Steering_Engine_Stop();
+  HAL_Delay(2000);
+}
+u8 LED_Ctl = 0;
+u8 STOP_Ctl = 0;
+void INIT_LED()
+{
+
+  if (LED_Ctl % 2)
+  {
+    HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+  }
+  LED_Ctl++;
+}
+uint8_t ADC_ins = 0;
+void Voltage_detection()
+{
+  uint16_t V = 0;
+  //寮?鍚疉DC1
+  HAL_ADC_Start(&hadc1);
+  //绛夊緟ADC杞?鎹㈠畬鎴愶紝瓒呮椂涓?100ms
+  HAL_ADC_PollForConversion(&hadc1, 100);
+  //鍒ゆ柇ADC鏄?鍚﹁浆鎹㈡垚鍔?
+  if (HAL_IS_BIT_SET(HAL_ADC_GetState(&hadc1), HAL_ADC_STATE_REG_EOC))
+  {
+    //璇诲彇鍊?
+    V = HAL_ADC_GetValue(&hadc1);
+    if (V < 2600)
+    {
+      HAL_Delay(100);
+      HAL_ADC_PollForConversion(&hadc1, 100);
+      if (HAL_IS_BIT_SET(HAL_ADC_GetState(&hadc1), HAL_ADC_STATE_REG_EOC))
+      {
+        V = HAL_ADC_GetValue(&hadc1);
+        if (V < 2600)
+        {
+          HAL_Delay(100);
+          HAL_ADC_PollForConversion(&hadc1, 100);
+          if (HAL_IS_BIT_SET(HAL_ADC_GetState(&hadc1), HAL_ADC_STATE_REG_EOC))
+          {
+            V = HAL_ADC_GetValue(&hadc1);
+            if (V < 2600)
+            {
+              // LED_Ctl = 0;
+              STOP_Ctl = 0;
+              HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+            }
+          }
+        }
+      }
+    }
+    else
+    {
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+    }
+  }
+  HAL_ADC_Stop(&hadc1);
+}
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim == &Steering_Engine_TIM)
+  {
+    Steering_Engine_Action();
+  }
+  else if (htim == &htim3)
+  {
+    if (LED_Ctl < 6)
+    {
+      INIT_LED();
+    }
+    else
+    {
+      STOP_Ctl++;
+      Voltage_detection();
+    }
+
+    if (STOP_Ctl >= 6)
+    {
+      STOP_Ctl = 0;
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+      enter_stop_mode();
+      exit_stop_mode();
+    }
+    IR_NEC_Read_Dat[0] = 0;
+    IR_NEC_Read_Dat[1] = 0;
+    IR_NEC_Read_Dat[2] = 0;
+    IR_NEC_Read_Dat[3] = 0;
+  }
+}
+void enter_stop_mode(void)
+{
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+
+  // 杩涘叆STOP妯″紡
+  HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+}
 void exit_stop_mode(void)
 {
   HAL_Init();
@@ -91,17 +198,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
   }
 }
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  if (htim == &Steering_Engine_TIM)
-  {
-    Steering_Engine_Action();
-  }
-  else if (htim == &htim3)
-  {
-    LED_Ctrl();
-  }
-}
 /* USER CODE END 0 */
 
 /**
@@ -111,7 +207,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+  uint8_t a = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -167,12 +263,15 @@ int main(void)
       {
         CLOSE();
       }
+      a++;
       IR_NEC_Read_OK = 0;
     }
-    // Steering_Engine_360(1, 30);
-    // HAL_Delay(500);
-    // Steering_Engine_360(0, 30);
-    // HAL_Delay(500);
+    if (a >= 20)
+    {
+      a = 0;
+      __set_FAULTMASK(1); // STM32??????
+      NVIC_SystemReset();
+    }
   }
 
   /* USER CODE END 3 */
